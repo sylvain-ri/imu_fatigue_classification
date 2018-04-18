@@ -14,11 +14,11 @@ from pprint import pprint
 # #######################################################################
 # #######################       Parameters        #######################
 # #######################################################################
-DEBUG = 3
+DEBUG = 0
 SKIP_BEG_SEC = 1        # remove what happens when the recording on the smartphone is started and put into pocket
 SKIP_END_SEC = 1        # same, for the end, when removed from pocket
-SKIP_CHANGE_SEC = 1     # same, between transitions
-THRESHOLD = 1          # threshold to cut the data
+SKIP_CHANGE_SEC = 0.8     # same, between transitions
+THRESHOLD = 1         # threshold to cut the data
 LABELS = {"none": -1, "standing": 0,
           "walk_rested": 1, "walk_tired": 2, "walk_very_tired": 3}
 
@@ -62,7 +62,7 @@ def clean_data(data, tiredness_state):
 
 
     # Plotting
-    if DEBUG > 3:
+    if DEBUG > 7:
         columns = ["acc_x", "acc_y", "acc_z", "grav_x", "grav_y", "grav_z",
                    "lin_acc_x", "lin_acc_y", "lin_acc_z",
                    "gyro_x", "gyro_y", "gyro_z",
@@ -72,7 +72,7 @@ def clean_data(data, tiredness_state):
         plt.plot(data.time_ms, data[col_to_plot])
         plt.legend(col_to_plot)
         plt.tight_layout()
-        # plt.show()
+        plt.show()
 
 
 
@@ -85,7 +85,7 @@ def clean_data(data, tiredness_state):
     # add each difference on a 0.2 sec window
     # if that sum of noise is low, cut before, define it as standing state.
     # If DEBUG
-    if DEBUG > 5:
+    if DEBUG > 3:
         plt.figure(f"{index}- Smooth and acc variation")
 
     # Smoothing each acc axis
@@ -97,22 +97,22 @@ def clean_data(data, tiredness_state):
         data[acc_smooth_xyz] = data[f"acc_{xyz}"].rolling(round(0.2*frequency), win_type="hamming", center=True).sum()
         # compute derivative of each axis
         data[acc_derivative_xyz] = abs(data[acc_smooth_xyz].shift(1) - data[acc_smooth_xyz].shift(-1))
-        if DEBUG > 3:
+        if DEBUG > 5:
             plt.plot(data.time_ms, data[acc_smooth_xyz], label=acc_smooth_xyz)
 
     # sum of derivatives of each axis
     data["acc_sum"] = data["acc_derivative_x"] + data["acc_derivative_y"] + data["acc_derivative_z"]
-    data["acc_sum_smoth"] = data["acc_sum"].rolling(round(0.4*frequency), win_type="hamming", center=True).sum() \
-                            * 2 / round(0.4*frequency)
+    data["acc_sum_smoth"] = data["acc_sum"].rolling(round(0.8*frequency), win_type="hamming", center=True).sum() \
+                            * 2 / round(0.8*frequency)
 
 
     # If DEBUG
-    if DEBUG > 5:
+    if DEBUG > 3:
         plt.plot(data.time_ms, data["acc_sum"], label="acc_sum")
         plt.plot(data.time_ms, data["acc_sum_smoth"], label="acc_sum_smoth")
         plt.tight_layout()
         plt.legend()
-        # plt.show()
+        plt.show()
 
     #
     # ##################################################################
@@ -144,7 +144,7 @@ def clean_data(data, tiredness_state):
     i6_walk_rest = data.loc[data.index > i5_rest_walk + SKIP_CHANGE_SEC*frequency, "acc_sum_smoth"][data["acc_sum_smoth"] < THRESHOLD].index[0]
     data.loc[(i5_rest_walk <= data.index) & (data.index < i6_walk_rest), "labels"] = LABELS[tiredness_state]
     # Label until noise
-    i7_rest_noise = data.loc[data.index > i6_walk_rest + SKIP_CHANGE_SEC*frequency, "acc_sum_smoth"][data["acc_sum_smoth"] > THRESHOLD].index[0]
+    i7_rest_noise = data.loc[data.index > i6_walk_rest + SKIP_CHANGE_SEC*frequency, "acc_sum_smoth"][data["acc_sum_smoth"] > THRESHOLD].index[0] - 10
     data.loc[(i6_walk_rest <= data.index) & (data.index < i7_rest_noise), "labels"] = LABELS["standing"]
     # Drop end part
     data.drop(data.loc[(i7_rest_noise <= data.index)].index, inplace=True)
@@ -166,7 +166,6 @@ def clean_data(data, tiredness_state):
     # todo break into multiple "steps"
     # todo fft(), max acc, ...
     # todo gravity direction compared to stationary state !
-    # todo break into tired/not and also into standing/slow/medium/fast
 
     # Plots
     if DEBUG > 1:
@@ -222,8 +221,7 @@ if False:
 # #######################################################################
 # #######################          SETUP          #######################
 # #######################################################################
-# todo add label for walk speed
-# todo add label for tired/not
+# todo add label for walk speed  standing/slow/medium/fast
 
 # Logging Settings
 logging.basicConfig(level=logging.INFO)
@@ -235,36 +233,55 @@ os.chdir(folder)
 files = [f for f in os.listdir(folder) if f.endswith(".csv")]
 logging.info(f"found {len(files)} files in folder {folder}")
 
+# Holders:
+split_indexes = {}
+
+
 # #######################################################################
 # #######################          MAIN           #######################
 # #######################################################################
 # for index, file_name in enumerate([files[5], files[17]]):
 for index, file_name in enumerate(files):
 
-    if index in (5, 17):
+    if index not in (20,):
+        # Fixing early experiments
+        if index == 0:              THRESHOLD = 5.67
+        elif index == 3:            THRESHOLD = 3.5
+        elif index in range(5):     THRESHOLD = 4
+        else:                       THRESHOLD = 2
+
+        # if index in (0, 3): DEBUG = 4
+        # else:  DEBUG = 0
+
         state = "none"
         if index in range(0, 6):      state = "walk_rested"
         elif index in range(6, 12):   state = "walk_tired"
         elif index in range(12, 18):  state = "walk_very_tired"
 
         print(f"\n *** File number {index} ***")
-        data = load_csv(file_name)
+        frame = load_csv(file_name)
         print("data loaded")
-        print(data.shape)
-        split_indexes = clean_data(data, state)
-        print(data.shape)
-        print("data cleaned \n")
+        print(frame.shape)
+        split_indexes[index] = clean_data(frame, state)
+        print(frame.shape)
+        print("data cleaned")
+
+        if index == 0:
+            data = frame
+        else:
+            data = pd.concat([data, frame])
 
 # whyyyyyy is plt. blocking...
 plt.show()
-input("press any key: ")
+# input("press any key: ")
 plt.close("all")
 
+pprint(split_indexes)
 
+print("Concatenate all frames")
+print(data.describe())
 
-
-
-
+input("what?")
 
 
 
