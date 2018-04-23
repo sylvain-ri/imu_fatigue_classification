@@ -2,11 +2,17 @@
 # Imports
 import logging
 import os
+
+import math
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import label
 from matplotlib import pyplot as plt
+from matplotlib import patches as mpatches
 from numpy.fft import fft
+import numpy as np
+from scipy import fftpack
+from scipy.signal import blackman
 from pprint import pprint
 
 
@@ -14,7 +20,7 @@ from pprint import pprint
 # #######################################################################
 # #######################       Parameters        #######################
 # #######################################################################
-DEBUG = 0
+DEBUG = 2
 SKIP_BEG_SEC = 1        # remove what happens when the recording on the smartphone is started and put into pocket
 SKIP_END_SEC = 1        # same, for the end, when removed from pocket
 SKIP_CHANGE_SEC = 0.8     # same, between transitions
@@ -39,7 +45,8 @@ def load_csv(file_name):
 def clean_data(data, tiredness_state):
     # Set the datetime as index
     data.date_time = pd.to_datetime(data["date_time"], format='%Y-%m-%d %H:%M:%S:%f')
-    # data.set_index("date_time")
+    # data["index"] = range(data.shape[0])
+    # data.set_index("index")
     # time_ms converted into seconds
     data.time_ms = data.time_ms / 1000
     # find total time, sampling frequency
@@ -101,6 +108,9 @@ def clean_data(data, tiredness_state):
             plt.plot(data.time_ms, data[acc_smooth_xyz], label=acc_smooth_xyz)
 
     # sum of derivatives of each axis
+    data["acc_tot"] = list(np.sqrt(data["acc_x"]**2 + data["acc_y"]**2 + data["acc_z"]**2))
+    data["acc_deriv_tot"] = list(np.sqrt(data["acc_derivative_x"]**2 + data["acc_derivative_y"]**2 + data["acc_derivative_z"]**2))
+
     data["acc_sum"] = data["acc_derivative_x"] + data["acc_derivative_y"] + data["acc_derivative_z"]
     data["acc_sum_smoth"] = data["acc_sum"].rolling(round(0.8*frequency), win_type="hamming", center=True).sum() \
                             * 2 / round(0.8*frequency)
@@ -108,7 +118,7 @@ def clean_data(data, tiredness_state):
 
     # If DEBUG
     if DEBUG > 3:
-        plt.plot(data.time_ms, data["acc_sum"], label="acc_sum")
+        # plt.plot(data.time_ms, data["acc_sum"], label="acc_sum")
         plt.plot(data.time_ms, data["acc_sum_smoth"], label="acc_sum_smoth")
         plt.tight_layout()
         plt.legend()
@@ -120,10 +130,12 @@ def clean_data(data, tiredness_state):
     # Labels
     # ##################################################################
     data.drop(range(SKIP_BEG_SEC*frequency), inplace=True)
+    data.index = range(data.shape[0])
 
     # Ensure that we found the resting state
     i0_set_rest = data[data["acc_sum_smoth"] < THRESHOLD].index[0]
     data.drop(data.index[range(i0_set_rest)], inplace=True)      # remove beginning with noise
+    data.index = range(data.shape[0])
     i0_set_rest = 0
     # Label until the end of first rest
     i1_rest_walk = data.loc[data.index > i0_set_rest + SKIP_CHANGE_SEC*frequency, "acc_sum_smoth"][data["acc_sum_smoth"] > THRESHOLD].index[0]
@@ -149,7 +161,6 @@ def clean_data(data, tiredness_state):
     # Drop end part
     data.drop(data.loc[(i7_rest_noise <= data.index)].index, inplace=True)
 
-
     # Collect indexes
     split_indexes = [i0_set_rest, i1_rest_walk, i2_walk_rest, i3_rest_turn, i4_turn_rest,
                      i5_rest_walk, i6_walk_rest, i7_rest_noise]
@@ -159,38 +170,29 @@ def clean_data(data, tiredness_state):
     if DEBUG > 5:
         print(data["labels"].sample(10))
 
-
-
-
-    #
-    # todo break into multiple "steps"
-    # todo fft(), max acc, ...
-    # todo gravity direction compared to stationary state !
-
     # Plots
-    if DEBUG > 1:
-        plt.figure(f"{index}- Sum of variation")
-        plt.plot(data.time_ms, data["acc_sum"], label="acc_sum")
-        plt.plot(data.time_ms, data["acc_sum_smoth"], label="acc_sum_smoth")
+    if DEBUG > 1 and index in (3, 14):
+        plt.figure(f"{index}- Gyro and labels")
+        # plt.plot(data.time_ms, data["acc_sum"], label="acc_sum")
+        plt.plot(data.time_ms, data["gyro_x"], label="acc_sum")
+        plt.plot(data.time_ms, data["gyro_y"], label="acc_sum")
+        plt.plot(data.time_ms, data["gyro_z"], label="acc_sum")
+        # plt.plot(data.time_ms, data["acc_sum_smoth"], label="acc_sum_smoth")
         plt.plot(data.time_ms, data["labels"], label="labels")
         plt.tight_layout()
         plt.legend()
+        # plt.show()
 
-    return split_indexes
+    # Split each part
+    split_frame = []
+    for ind_low, ind_high in zip(split_indexes[:-1], split_indexes[1:]):
+        split_frame.append({"label": data["labels"].iloc[ind_low],
+                            "frame": data[(ind_low <= data.index) & (data.index < ind_high)]})
+        if DEBUG > 6:
+            print("ind low and high : ", ind_low, ind_high, data.shape)
+            print(data["labels"].iloc[ind_low])
 
-
-
-# #######################################################################
-# #######################         sklearn         #######################
-# #######################################################################
-logging.info("sklearn section")
-
-# todo feed into random forest
-if False:
-    rf = RandomForestClassifier(n_estimators=100)
-    rf.fit(x, y)
-    rf.predict()
-
+    return split_frame, frequency
 
 
 
@@ -234,8 +236,8 @@ files = [f for f in os.listdir(folder) if f.endswith(".csv")]
 logging.info(f"found {len(files)} files in folder {folder}")
 
 # Holders:
-split_indexes = {}
-
+all_frames = []
+frequencies = []
 
 # #######################################################################
 # #######################          MAIN           #######################
@@ -262,26 +264,143 @@ for index, file_name in enumerate(files):
         frame = load_csv(file_name)
         print("data loaded")
         print(frame.shape)
-        split_indexes[index] = clean_data(frame, state)
+        split_frame, frequency = clean_data(frame, state)
         print(frame.shape)
         print("data cleaned")
 
-        if index == 0:
-            data = frame
-        else:
-            data = pd.concat([data, frame])
+        all_frames.extend(split_frame)
+        frequencies.append(frequency)
+
+freq = sum(frequencies) / len(frequencies)
 
 # whyyyyyy is plt. blocking...
 plt.show()
-# input("press any key: ")
 plt.close("all")
 
-pprint(split_indexes)
+print("\n")
+print("Preprocessing done, continuing on single dataset extraction")
+print("len(all_frames)", len(all_frames))
+# pprint(all_frames)
 
-print("Concatenate all frames")
-print(data.describe())
+# Setup
+col_to_plot = {1: ["acc_x", "acc_y", "acc_z"],
+               2: ["acc_derivative_x", "acc_derivative_y", "acc_derivative_z"],
+               3: ["acc_sum", "acc_sum_smoth"],
+               4: ["acc_tot", "acc_deriv_tot"],
+               5: ["gyro_x", "gyro_y", "gyro_z"]}
 
-input("what?")
+
+# Compute fft on all subsets
+col_to_plot = ["acc_derivative_z",]
+
+plt.figure(f"FFT comparison {col_to_plot}")
+plt.xlabel('Frequency in Hertz [Hz]')
+plt.ylabel('Frequency Domain Magnitude (Spectrum)')
+plt.xlim([-0.2, 10])
+red_patch = mpatches.Patch(color='red', label='walk_very_tired')
+green_patch = mpatches.Patch(color='green', label='walk_rested')
+blue_patch = mpatches.Patch(color='blue', label='standing')
+plt.legend(handles=[red_patch, green_patch, blue_patch])
+
+for index, dat in enumerate(all_frames):
+
+    if dat["label"] != LABELS["none"] and dat["label"] != LABELS["walk_tired"]:
+
+        state = list(LABELS.keys())[list(LABELS.values()).index(dat['label'])]
+        dat["fft"] = {}
+
+        for column in col_to_plot:
+
+            signal = dat["frame"][column]
+
+            f_s = freq
+            X = fftpack.fft(signal)
+            freqs = fftpack.fftfreq(len(signal)) * f_s
+
+            # X = np.round(abs(X), 2)
+            # print("Printing x, then X reversed")
+            # print(X[:10])
+            #
+            # X[0] = X[0] / 2
+            # X_pos = X[math.floor(len(X)/2):]
+            # ind_max = np.argpartition(abs(X_pos), -5)[-5:]
+            # dat["fft"][column] = [(round(i/freq, 2), X[ind_max]) for i in ind_max]
+
+            # print(X_pos[:10])
+            # print(ind_max[:10])
+            # print(dat["fft"][column])
+
+            if DEBUG > 1:
+                # print("sorted X : ", sorted(X_pos)[:5])
+                # pprint(("dat['fft'][column]", dat["fft"][column]))
+                pass
+
+            if DEBUG > 1:
+                if state == "standing":             colour = 'b'
+                elif state == "walk_rested":        colour = 'g'
+                elif state == "walk_very_tired":    colour = 'r'
+                plt.plot(freqs, abs(X), colour)
+
+            # N = dat["frame"][column].shape[0]
+            # T = float(N) / freq
+            # x = np.linspace(0.0, N * T, N)
+            # yf = scipy.fftpack.fft(dat["frame"][column])
+            # xf = np.linspace(0.0, 1.0 / (2.0 * T), N / 2)
+            #
+            # dat["fft"][column] = xf, 2.0/N * np.abs(yf[:N//2])
+
+        # pprint(dat["fft"][column])
+        # for i in range(1, 4):
+        #     plt.figure(f"index {index}: {state} - FFT data - {col_to_plot[i]}")
+        #     plt.plot([abs(dat["fft"][x]) for x in col_to_plot[i]])
+        #     plt.legend(col_to_plot[i])
+        #     plt.tight_layout()
+
+        # plt.show()
+
+
+
+plt.show()
+
+# #######################################################################
+# #######################         sklearn         #######################
+# #######################################################################
+logging.info("sklearn section")
+
+# todo feed into random forest
+if False:
+    rf = RandomForestClassifier(n_estimators=100)
+    rf.fit(x, y)
+    rf.predict()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
