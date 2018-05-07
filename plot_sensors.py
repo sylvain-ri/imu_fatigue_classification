@@ -28,6 +28,18 @@ THRESHOLD = 1         # threshold to cut the data
 LABELS = {"none": -1, "standing": 0,
           "walk_rested": 1, "walk_tired": 2, "walk_very_tired": 3}
 
+# Holders:
+all_frames = []
+frequencies = []
+freq = 0
+
+# Setup
+col_to_plot = {1: ["acc_x", "acc_y", "acc_z"],
+               2: ["acc_derivative_x", "acc_derivative_y", "acc_derivative_z"],
+               3: ["acc_sum", "acc_sum_smoth"],
+               4: ["acc_tot", "acc_deriv_tot"],
+               5: ["gyro_x", "gyro_y", "gyro_z"]}
+
 
 # #######################################################################
 # #######################         load CSV        #######################
@@ -165,13 +177,13 @@ def clean_data(data, tiredness_state):
     split_indexes = [i0_set_rest, i1_rest_walk, i2_walk_rest, i3_rest_turn, i4_turn_rest,
                      i5_rest_walk, i6_walk_rest, i7_rest_noise]
 
-    if DEBUG > 1:
+    if DEBUG > 2:
         print(split_indexes)
     if DEBUG > 5:
         print(data["labels"].sample(10))
 
     # Plots
-    if DEBUG > 1 and index in (3, 14):
+    if DEBUG > 2 and index in (3, 14):
         plt.figure(f"{index}- Gyro and labels")
         # plt.plot(data.time_ms, data["acc_sum"], label="acc_sum")
         plt.plot(data.time_ms, data["gyro_x"], label="acc_sum")
@@ -195,8 +207,6 @@ def clean_data(data, tiredness_state):
     return split_frame, frequency
 
 
-
-
 # #######################################################################
 # #######################          KERAS          #######################
 # #######################################################################
@@ -216,162 +226,168 @@ if False:
     model.fit(x, y)
 
 
-
-
-
-
 # #######################################################################
 # #######################          SETUP          #######################
 # #######################################################################
 # todo add label for walk speed  standing/slow/medium/fast
+def setup_files():
+    # Logging Settings
+    logging.basicConfig(level=logging.INFO)
+    logging.info("Setup section")
 
-# Logging Settings
-logging.basicConfig(level=logging.INFO)
-logging.info("Setup section")
+    # Folder and Files
+    folder = "D:/Drive/Singapore/Courses/CS6206-HCI Human Computer Interaction/Project/Data"
+    os.chdir(folder)
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    logging.info(f"found {len(files)} files in folder {folder}")
 
-# Folder and Files
-folder = "D:/Drive/Singapore/Courses/CS6206-HCI Human Computer Interaction/Project/Data"
-os.chdir(folder)
-files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-logging.info(f"found {len(files)} files in folder {folder}")
+    return files
 
-# Holders:
-all_frames = []
-frequencies = []
 
 # #######################################################################
 # #######################          MAIN           #######################
 # #######################################################################
 # for index, file_name in enumerate([files[5], files[17]]):
-for index, file_name in enumerate(files):
+def files_load_clean_to_feat(files):
+    global all_frames
+    global THRESHOLD
 
-    if index not in (20,):
-        # Fixing early experiments
-        if index == 0:              THRESHOLD = 5.67
-        elif index == 3:            THRESHOLD = 3.5
-        elif index in range(5):     THRESHOLD = 4
-        else:                       THRESHOLD = 2
+    for index, file_name in enumerate(files):
 
-        # if index in (0, 3): DEBUG = 4
-        # else:  DEBUG = 0
+        if index not in (20,):
+            # Fixing early experiments
+            if index == 0:              THRESHOLD = 5.67
+            elif index == 3:            THRESHOLD = 3.5
+            elif index in range(5):     THRESHOLD = 4
+            else:                       THRESHOLD = 2
 
-        state = "none"
-        if index in range(0, 6):      state = "walk_rested"
-        elif index in range(6, 12):   state = "walk_tired"
-        elif index in range(12, 18):  state = "walk_very_tired"
+            # if index in (0, 3): DEBUG = 4
+            # else:  DEBUG = 0
 
-        print(f"\n *** File number {index} ***")
-        frame = load_csv(file_name)
-        print("data loaded")
-        print(frame.shape)
-        split_frame, frequency = clean_data(frame, state)
-        print(frame.shape)
-        print("data cleaned")
+            state = "none"
+            if index in range(0, 6):      state = "walk_rested"
+            elif index in range(6, 12):   state = "walk_tired"
+            elif index in range(12, 18):  state = "walk_very_tired"
 
-        all_frames.extend(split_frame)
-        frequencies.append(frequency)
+            print(f"\n *** File number {index} ***")
+            frame = load_csv(file_name)
+            print("data loaded")
+            print(frame.shape)
+            split_frame, frequency = clean_data(frame, state)
+            print(frame.shape)
+            print("data cleaned")
 
-freq = sum(frequencies) / len(frequencies)
+            all_frames.extend(split_frame)
+            frequencies.append(frequency)
 
-# whyyyyyy is plt. blocking...
-plt.show()
-plt.close("all")
-
-print("\n")
-print("Preprocessing done, continuing on single dataset extraction")
-print("len(all_frames)", len(all_frames))
-# pprint(all_frames)
-
-# Setup
-col_to_plot = {1: ["acc_x", "acc_y", "acc_z"],
-               2: ["acc_derivative_x", "acc_derivative_y", "acc_derivative_z"],
-               3: ["acc_sum", "acc_sum_smoth"],
-               4: ["acc_tot", "acc_deriv_tot"],
-               5: ["gyro_x", "gyro_y", "gyro_z"]}
+    global freq
+    freq = sum(frequencies) / len(frequencies)
 
 
-# Compute fft on all subsets
-col_to_plot = ["acc_derivative_z",]
+def plot_stuff():
+    # whyyyyyy is plt. blocking...
 
-plt.figure(f"FFT comparison {col_to_plot}")
-plt.xlabel('Frequency in Hertz [Hz]')
-plt.ylabel('Frequency Domain Magnitude (Spectrum)')
-plt.xlim([-0.2, 10])
-red_patch = mpatches.Patch(color='red', label='walk_very_tired')
-green_patch = mpatches.Patch(color='green', label='walk_rested')
-blue_patch = mpatches.Patch(color='blue', label='standing')
-plt.legend(handles=[red_patch, green_patch, blue_patch])
-
-for index, dat in enumerate(all_frames):
-
-    if dat["label"] != LABELS["none"] and dat["label"] != LABELS["walk_tired"]:
-
-        state = list(LABELS.keys())[list(LABELS.values()).index(dat['label'])]
-        dat["fft"] = {}
-
-        for column in col_to_plot:
-
-            signal = dat["frame"][column]
-
-            f_s = freq
-            X = fftpack.fft(signal)
-            freqs = fftpack.fftfreq(len(signal)) * f_s
-
-            # X = np.round(abs(X), 2)
-            # print("Printing x, then X reversed")
-            # print(X[:10])
-            #
-            # X[0] = X[0] / 2
-            # X_pos = X[math.floor(len(X)/2):]
-            # ind_max = np.argpartition(abs(X_pos), -5)[-5:]
-            # dat["fft"][column] = [(round(i/freq, 2), X[ind_max]) for i in ind_max]
-
-            # print(X_pos[:10])
-            # print(ind_max[:10])
-            # print(dat["fft"][column])
-
-            if DEBUG > 1:
-                # print("sorted X : ", sorted(X_pos)[:5])
-                # pprint(("dat['fft'][column]", dat["fft"][column]))
-                pass
-
-            if DEBUG > 1:
-                if state == "standing":             colour = 'b'
-                elif state == "walk_rested":        colour = 'g'
-                elif state == "walk_very_tired":    colour = 'r'
-                plt.plot(freqs, abs(X), colour)
-
-            # N = dat["frame"][column].shape[0]
-            # T = float(N) / freq
-            # x = np.linspace(0.0, N * T, N)
-            # yf = scipy.fftpack.fft(dat["frame"][column])
-            # xf = np.linspace(0.0, 1.0 / (2.0 * T), N / 2)
-            #
-            # dat["fft"][column] = xf, 2.0/N * np.abs(yf[:N//2])
-
-        # pprint(dat["fft"][column])
-        # for i in range(1, 4):
-        #     plt.figure(f"index {index}: {state} - FFT data - {col_to_plot[i]}")
-        #     plt.plot([abs(dat["fft"][x]) for x in col_to_plot[i]])
-        #     plt.legend(col_to_plot[i])
-        #     plt.tight_layout()
-
-        # plt.show()
+    print("\n")
+    print("Preprocessing done, continuing on single dataset extraction")
+    print("len(all_frames)", len(all_frames))
+    # pprint(all_frames)
 
 
+    # Compute fft on all subsets
+    col_to_plot = ["acc_derivative_z",]
 
-plt.show()
+    plt.figure(f"FFT comparison {col_to_plot}")
+    plt.xlabel('Frequency in Hertz [Hz]')
+    plt.ylabel('Frequency Domain Magnitude (Spectrum)')
+    plt.xlim([-0.2, 10])
+    red_patch = mpatches.Patch(color='red', label='walk_very_tired')
+    green_patch = mpatches.Patch(color='green', label='walk_rested')
+    blue_patch = mpatches.Patch(color='blue', label='standing')
+    plt.legend(handles=[red_patch, green_patch, blue_patch])
+
+    plt.show()
+    plt.close("all")
+
+
+def fft_frames():
+    print("Compute the fft for some columns")
+
+    col_to_fft = col_to_plot[1] + col_to_plot[3] + col_to_plot[4] + col_to_plot[5]
+
+    for index, dat in enumerate(all_frames):
+
+        if dat["label"] != LABELS["none"] and dat["label"] != LABELS["walk_tired"]:
+
+            # Find the state
+            state = list(LABELS.keys())[list(LABELS.values()).index(dat['label'])]
+
+            # FFT will be hold under dat["fft"]
+            dat["fft"] = {}
+
+            for column in col_to_fft:
+
+                signal = dat["frame"][column]
+
+                f_s = freq
+                X = fftpack.fft(signal)
+                freqs = fftpack.fftfreq(len(signal)) * f_s
+
+                dat["frame"][f"fft_{column}"] = freqs
+
+                # X = np.round(abs(X), 2)
+                # print("Printing x, then X reversed")
+                # print(X[:10])
+                #
+                # X[0] = X[0] / 2
+                # X_pos = X[math.floor(len(X)/2):]
+                # ind_max = np.argpartition(abs(X_pos), -5)[-5:]
+                # dat["fft"][column] = [(round(i/freq, 2), X[ind_max]) for i in ind_max]
+
+                # print(X_pos[:10])
+                # print(ind_max[:10])
+                # print(dat["fft"][column])
+
+                if DEBUG > 1:
+                    # print("sorted X : ", sorted(X_pos)[:5])
+                    # pprint(("dat['fft'][column]", dat["fft"][column]))
+                    pass
+
+                if DEBUG > 2:
+                    if state == "standing":             colour = 'b'
+                    elif state == "walk_rested":        colour = 'g'
+                    elif state == "walk_very_tired":    colour = 'r'
+                    plt.plot(freqs, abs(X), colour)
+
+                # N = dat["frame"][column].shape[0]
+                # T = float(N) / freq
+                # x = np.linspace(0.0, N * T, N)
+                # yf = scipy.fftpack.fft(dat["frame"][column])
+                # xf = np.linspace(0.0, 1.0 / (2.0 * T), N / 2)
+                #
+                # dat["fft"][column] = xf, 2.0/N * np.abs(yf[:N//2])
+
+            # pprint(dat["fft"][column])
+            # for i in range(1, 4):
+            #     plt.figure(f"index {index}: {state} - FFT data - {col_to_plot[i]}")
+            #     plt.plot([abs(dat["fft"][x]) for x in col_to_plot[i]])
+            #     plt.legend(col_to_plot[i])
+            #     plt.tight_layout()
+
+            # plt.show()
+    print("Done")
+
 
 # #######################################################################
 # #######################         sklearn         #######################
 # #######################################################################
-logging.info("sklearn section")
+def classification():
+    logging.info("sklearn section")
 
-# todo feed into random forest
-if False:
-    rf = RandomForestClassifier(n_estimators=100)
-    rf.fit(x, y)
-    rf.predict()
+    # todo feed into random forest
+    if False:
+        rf = RandomForestClassifier(n_estimators=100)
+        rf.fit(x, y)
+        rf.predict()
 
 
 
