@@ -2,15 +2,14 @@
 # Imports
 import logging
 import os
-
-import math
+import numpy as np
 import pandas as pd
+from tqdm import tqdm
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import label
 from matplotlib import pyplot as plt
 from matplotlib import patches as mpatches
-from numpy.fft import fft
-import numpy as np
 from scipy import fftpack
 from scipy.signal import blackman
 from pprint import pprint
@@ -20,7 +19,7 @@ from pprint import pprint
 # #######################################################################
 # #######################       Parameters        #######################
 # #######################################################################
-DEBUG = 2
+DEBUG = 1
 SKIP_BEG_SEC = 1        # remove what happens when the recording on the smartphone is started and put into pocket
 SKIP_END_SEC = 1        # same, for the end, when removed from pocket
 SKIP_CHANGE_SEC = 0.8     # same, between transitions
@@ -195,11 +194,28 @@ def clean_data(data, tiredness_state):
         plt.legend()
         # plt.show()
 
-    # Split each part
+    #
+    # Split each part rest / walk / tired_walk ...
     split_frame = []
+    window = frequency * 4
+
     for ind_low, ind_high in zip(split_indexes[:-1], split_indexes[1:]):
-        split_frame.append({"label": data["labels"].iloc[ind_low],
-                            "frame": data[(ind_low <= data.index) & (data.index < ind_high)]})
+
+        # Chop in smaller windows of 4 seconds for walking labels
+        if data["labels"].iloc[ind_low] == LABELS[tiredness_state]:
+            n = 0
+            while ind_low + (n+1) * window < ind_high:
+                chop_low = ind_low + n * window
+                chop_high = ind_low + (n+1) * window
+                split_frame.append({"label": data["labels"].iloc[chop_low],
+                                    "frame": data[(chop_low <= data.index) & (data.index < chop_high)]})
+                n += 1
+
+        # normal labels are not chopped
+        else:
+            split_frame.append({"label": data["labels"].iloc[ind_low],
+                                "frame": data[(ind_low <= data.index) & (data.index < ind_high)]})
+
         if DEBUG > 6:
             print("ind low and high : ", ind_low, ind_high, data.shape)
             print(data["labels"].iloc[ind_low])
@@ -229,10 +245,9 @@ if False:
 # #######################################################################
 # #######################          SETUP          #######################
 # #######################################################################
-# todo add label for walk speed  standing/slow/medium/fast
 def setup_files():
     # Logging Settings
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig()
     logging.info("Setup section")
 
     # Folder and Files
@@ -247,12 +262,11 @@ def setup_files():
 # #######################################################################
 # #######################          MAIN           #######################
 # #######################################################################
-# for index, file_name in enumerate([files[5], files[17]]):
 def files_load_clean_to_feat(files):
     global all_frames
     global THRESHOLD
 
-    for index, file_name in enumerate(files):
+    for index, file_name in tqdm(enumerate(files), total=len(files)):
 
         if index not in (20,):
             # Fixing early experiments
@@ -269,13 +283,11 @@ def files_load_clean_to_feat(files):
             elif index in range(6, 12):   state = "walk_tired"
             elif index in range(12, 18):  state = "walk_very_tired"
 
-            print(f"\n *** File number {index} ***")
             frame = load_csv(file_name)
-            print("data loaded")
-            print(frame.shape)
             split_frame, frequency = clean_data(frame, state)
-            print(frame.shape)
-            print("data cleaned")
+            if DEBUG > 2:
+                print(f"\n *** File number {index} ***")
+                print(frame.shape)
 
             all_frames.extend(split_frame)
             frequencies.append(frequency)
@@ -314,67 +326,67 @@ def fft_frames():
 
     col_to_fft = col_to_plot[1] + col_to_plot[3] + col_to_plot[4] + col_to_plot[5]
 
-    for index, dat in enumerate(all_frames):
+    for index, dat in tqdm(enumerate(all_frames), total=len(all_frames)):
 
-        if dat["label"] != LABELS["none"] and dat["label"] != LABELS["walk_tired"]:
+        if dat["label"] != LABELS["none"]:      # and dat["label"] != LABELS["walk_tired"]
 
             # Find the state
             state = list(LABELS.keys())[list(LABELS.values()).index(dat['label'])]
 
-            # FFT will be hold under dat["fft"]
-            dat["fft"] = {}
-
             for column in col_to_fft:
 
                 signal = dat["frame"][column]
+                w = blackman(len(signal))
 
-                f_s = freq
-                X = fftpack.fft(signal)
-                freqs = fftpack.fftfreq(len(signal)) * f_s
+                X = fftpack.fft(signal * w)
+                # todo try without the window
 
-                dat["frame"][f"fft_{column}"] = freqs
-
-                # X = np.round(abs(X), 2)
-                # print("Printing x, then X reversed")
-                # print(X[:10])
-                #
-                # X[0] = X[0] / 2
-                # X_pos = X[math.floor(len(X)/2):]
-                # ind_max = np.argpartition(abs(X_pos), -5)[-5:]
-                # dat["fft"][column] = [(round(i/freq, 2), X[ind_max]) for i in ind_max]
-
-                # print(X_pos[:10])
-                # print(ind_max[:10])
-                # print(dat["fft"][column])
-
-                if DEBUG > 1:
-                    # print("sorted X : ", sorted(X_pos)[:5])
-                    # pprint(("dat['fft'][column]", dat["fft"][column]))
-                    pass
+                dat["frame"][f"fft_{column}"] = X
 
                 if DEBUG > 2:
                     if state == "standing":             colour = 'b'
                     elif state == "walk_rested":        colour = 'g'
                     elif state == "walk_very_tired":    colour = 'r'
+                    else:                               colour = 'y'
+                    freqs = fftpack.fftfreq(len(signal)) * freq
                     plt.plot(freqs, abs(X), colour)
 
-                # N = dat["frame"][column].shape[0]
-                # T = float(N) / freq
-                # x = np.linspace(0.0, N * T, N)
-                # yf = scipy.fftpack.fft(dat["frame"][column])
-                # xf = np.linspace(0.0, 1.0 / (2.0 * T), N / 2)
-                #
-                # dat["fft"][column] = xf, 2.0/N * np.abs(yf[:N//2])
-
-            # pprint(dat["fft"][column])
-            # for i in range(1, 4):
-            #     plt.figure(f"index {index}: {state} - FFT data - {col_to_plot[i]}")
-            #     plt.plot([abs(dat["fft"][x]) for x in col_to_plot[i]])
-            #     plt.legend(col_to_plot[i])
-            #     plt.tight_layout()
-
-            # plt.show()
     print("Done")
+
+
+def plot_fft(frame_id):
+    if all_frames[frame_id]['label'] < 0:
+        print("Frame to drop, not classified")
+        return
+    print("********************************************")
+    print(f"Label = {all_frames[frame_id]['label']}")
+    print(f"Columns: {all_frames[frame_id]['frame'].columns}")
+    signal = all_frames[frame_id]['frame']['fft_acc_sum_smoth']
+    N = len(signal)
+    T = 1.0 / freq
+    xf = np.linspace(0.0, 1.0 / (2.0 * T), N // 10)
+    yf = signal
+    plt.plot(xf, (2.0 / N / 10.0) * np.abs(yf[0:N // 10]))
+    plt.grid()
+    plt.show()
+
+
+def print_values(frame_id):
+    print(f"Label is {all_frames[frame_id]['label']}")
+    print(np.abs(all_frames[frame_id]['frame']['fft_acc_sum_smoth'][:10]))
+
+
+def pandas_features():
+    data = []
+    for f in tqdm(all_frames, total=len(all_frames)):
+
+        sample = [f['label'], ]
+
+
+        data.append(sample)
+
+    features = pd.DataFrame(data, )
+    return features
 
 
 # #######################################################################
