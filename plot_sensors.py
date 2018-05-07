@@ -39,6 +39,8 @@ col_to_plot = {1: ["acc_x", "acc_y", "acc_z"],
                4: ["acc_tot", "acc_deriv_tot"],
                5: ["gyro_x", "gyro_y", "gyro_z"]}
 
+col_to_fft = col_to_plot[1] + col_to_plot[2] + col_to_plot[3] + col_to_plot[4] + col_to_plot[5]
+
 
 # #######################################################################
 # #######################         load CSV        #######################
@@ -324,8 +326,6 @@ def plot_stuff():
 def fft_frames():
     print("Compute the fft for some columns")
 
-    col_to_fft = col_to_plot[1] + col_to_plot[3] + col_to_plot[4] + col_to_plot[5]
-
     for index, dat in tqdm(enumerate(all_frames), total=len(all_frames)):
 
         if dat["label"] != LABELS["none"]:      # and dat["label"] != LABELS["walk_tired"]
@@ -376,16 +376,17 @@ def print_values(frame_id):
     print(np.abs(all_frames[frame_id]['frame']['fft_acc_sum_smoth'][:10]))
 
 
-def pandas_features():
+def features_to_pandas():
+
+    columns = ['label', ] + [f['frame'][col][:5] for col in col_to_fft] # todo
     data = []
     for f in tqdm(all_frames, total=len(all_frames)):
 
-        sample = [f['label'], ]
-
+        sample = [f['label'], ] + [f['frame'][col][:5] for col in col_to_fft] # todo into different columns
 
         data.append(sample)
 
-    features = pd.DataFrame(data, )
+    features = pd.DataFrame.from_records(data, columns=columns)
     return features
 
 
