@@ -1,5 +1,6 @@
 # #######################################################################
 # Imports
+import argparse
 import logging
 import os
 import numpy as np
@@ -425,25 +426,24 @@ def features_to_pandas(n=5):
 # #######################################################################
 # ####################         Random Forest         ####################
 # #######################################################################
-def rf_classification():
+def rf_classification(test_ratio=0.25, trees=10):
     logging.info("sklearn section")
 
     features_col = df.columns[1:-1]
-    # print(features_col)
 
     # Train / test data
-    train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], train_size=0.75)
+    train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=test_ratio)
 
-    # todo feed into random forest
     # Show the number of observations for the test and training dataframes
-    print("Train_x Shape :: ", train_x.shape)
-    print("Train_y Shape :: ", train_y.shape)
-    print("Test_x Shape :: ", test_x.shape)
-    print("Test_y Shape :: ", test_y.shape)
+    if DEBUG > 1:
+        print("Train_x Shape :: ", train_x.shape)
+        print("Train_y Shape :: ", train_y.shape)
+        print("Test_x Shape :: ", test_x.shape)
+        print("Test_y Shape :: ", test_y.shape)
 
     #
     # Create a random forest Classifier. By convention, clf means 'Classifier'
-    RF_clf = RandomForestClassifier()   # n_jobs=2, random_state=0
+    RF_clf = RandomForestClassifier(n_estimators=trees, n_jobs=4)   # n_jobs=2, random_state=0
 
     # Train the Classifier to take the training features and learn how they relate to the training y (the labels)
     RF_clf.fit(train_x, train_y)
@@ -452,20 +452,23 @@ def rf_classification():
     predictions = RF_clf.predict(test_x)
 
     # View the predictions
-    for i in range(len(test_y)):
-        print(f"Actual outcome and Predicted outcome :: {test_y.iloc[i]} vs {predictions[i]}")
+    if DEBUG > 1:
+        for i in range(len(test_y)):
+            print(f"Actual outcome and Predicted outcome :: {test_y.iloc[i]} vs {predictions[i]}")
 
     # Create actual english names for the plants for each predicted plant class
     print("Train Accuracy :: ", accuracy_score(train_y, RF_clf.predict(train_x)))
     print("Test Accuracy  :: ", accuracy_score(test_y, predictions))
 
     # Create confusion matrix
-    pd.crosstab(test_y, predictions, rownames=['Actual Label'], colnames=['Predicted Label'])
+    if DEBUG > 0:
+        print(pd.crosstab(test_y, predictions, rownames=['Actual Label'], colnames=['Predicted Label']))
 
     # View a list of the features and their importance scores
-    feat_importance = pd.DataFrame({'feat_x': features_col, 'importance': RF_clf.feature_importances_})
-    feat_importance.sort_values(['importance'], ascending=False, inplace=True)
-    feat_importance.head(10)
+    if DEBUG > 0:
+        feat_importance = pd.DataFrame({'feat_x': features_col, 'importance': RF_clf.feature_importances_})
+        feat_importance.sort_values(['importance'], ascending=False, inplace=True)
+        feat_importance.head(10)
 
 
 
@@ -474,11 +477,51 @@ def rf_classification():
 
 
 
+# ########################################################################################
+# ###########################      main call, cmd line     ###############################
+if __name__ == '__main__':
 
+    # Arguments for inline commands : https://docs.python.org/3/howto/argparse.html#id1
+    cmd = argparse.ArgumentParser(
+        "\n"
+        "  Coded by Sylvain Riondet, @NUS/SoC \n"
+        "  e0267895@u.nus.edu / sylvainriondet@gmail.com \n"
+        "  Course: CS6206 Human Computer Interaction - Prof Brian Lim\n"
+        "  Submission for 2018/05/12 \n"
+        "\n")
+    cmd.add_argument("-r", "--ratio", help="Ratio for the test data set",
+                     type=float, default=0.25)
+    cmd.add_argument("-t", "--trees", help="Number of trees in the Random Forest classifier",
+                     type=int, default=10)
+    cmd.add_argument("-v", "--verbosity", help="Verbosity level, 0 (no comments), to 10 (lots of details)",
+                     type=int, default=0, choices=[i for i in range(-1, 10)])
+    args = cmd.parse_args()
 
+    # Parse the text file to formula
+    print("Hello, lets start ! Let's try to differentiate tired and none tired state")
 
+    DEBUG = args.verbosity
 
+    pd.set_option('display.expand_frame_repr', False)
+    files = setup_files()
+    files_load_clean_to_feat(files)
+    fft_frames()
 
+    df = features_to_pandas()
+    # rf_classification(test_ratio=args.ratio, trees=args.trees)
+
+    user_ratio = args.ratio
+    user_trees = args.trees
+
+    while user_trees != 0:
+        rf_classification(test_ratio=user_ratio, trees=user_trees)
+
+        n_user_ratio = input("Set a new ratio: ")
+        if n_user_ratio != "" and float(n_user_ratio) > 0:
+            user_ratio = float(n_user_ratio)
+        n_user_trees = int(input("Set a new number of trees or '0' to exit: "))
+        if n_user_trees != "":
+            user_trees = int(n_user_trees)
 
 
 
