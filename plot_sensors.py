@@ -61,7 +61,7 @@ def load_csv(file_name):
 # #######################################################################
 # #######################       main function     #######################
 # #######################################################################
-def clean_data(data, tiredness_state):
+def clean_data(data, tiredness_state, chop_period=4):
     # Set the datetime as index
     data.date_time = pd.to_datetime(data["date_time"], format='%Y-%m-%d %H:%M:%S:%f')
     # data["index"] = range(data.shape[0])
@@ -204,7 +204,7 @@ def clean_data(data, tiredness_state):
     #
     # Split each part rest / walk / tired_walk ...
     split_frame = []
-    window = frequency * 4
+    window = frequency * chop_period
 
     for ind_low, ind_high in zip(split_indexes[:-1], split_indexes[1:]):
 
@@ -231,25 +231,6 @@ def clean_data(data, tiredness_state):
 
 
 # #######################################################################
-# #######################          KERAS          #######################
-# #######################################################################
-if False:
-    import keras
-    from keras.layers import GRU, Dense
-    from keras.models import Sequential
-    x = (nb_of_data, nb_of_samples, nb_of_features)
-    y = nb_of_data * 1
-
-    model = Sequential(input_shape={timesteps, n_features})
-    model.add(GRU(256))
-    model.add(Dense(1))
-
-    model.compile(optimizer='adam')
-
-    model.fit(x, y)
-
-
-# #######################################################################
 # #######################          SETUP          #######################
 # #######################################################################
 def setup_files():
@@ -269,7 +250,7 @@ def setup_files():
 # #######################################################################
 # #######################          MAIN           #######################
 # #######################################################################
-def files_load_clean_to_feat(files):
+def files_load_clean_to_feat(files, chop_period=4):
     global all_frames
     global THRESHOLD
 
@@ -291,7 +272,7 @@ def files_load_clean_to_feat(files):
             elif index in range(12, 18):  state = "walk_very_tired"
 
             frame = load_csv(file_name)
-            split_frame, frequency = clean_data(frame, state)
+            split_frame, frequency = clean_data(frame, state, chop_period)
             if DEBUG > 2:
                 print(f"\n *** File number {index} ***")
                 print(frame.shape)
@@ -539,7 +520,7 @@ if __name__ == '__main__':
         "  Submission for 2018/05/12 \n"
         "\n")
     cmd.add_argument("-r", "--ratio", help="Ratio for the test data set",
-                     type=float, default=0.25)
+                     type=float, default=0.4)
     cmd.add_argument("-t", "--trees", help="Number of trees in the Random Forest classifier",
                      type=int, default=10)
     cmd.add_argument("-v", "--verbosity", help="Verbosity level, 0 (no comments), to 10 (lots of details)",
@@ -561,7 +542,7 @@ if __name__ == '__main__':
 
     pd.set_option('display.expand_frame_repr', False)
     files = setup_files()
-    files_load_clean_to_feat(files)
+    files_load_clean_to_feat(files, 1)
 
     do_stats = True
     if do_stats:
