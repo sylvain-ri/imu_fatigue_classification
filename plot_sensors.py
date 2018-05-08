@@ -7,6 +7,9 @@ import pandas as pd
 from tqdm import tqdm
 
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import label
 from matplotlib import pyplot as plt
 from matplotlib import patches as mpatches
@@ -354,20 +357,30 @@ def fft_frames():
     print("Done")
 
 
-def plot_fft(frame_id):
+def plot_fft(col_name, frame_id, show=True):
     if all_frames[frame_id]['label'] < 0:
         print("Frame to drop, not classified")
         return
     print("********************************************")
     print(f"Label = {all_frames[frame_id]['label']}")
-    print(f"Columns: {all_frames[frame_id]['frame'].columns}")
-    signal = all_frames[frame_id]['frame']['fft_acc_sum_smoth']
+    # print(f"Columns: {all_frames[frame_id]['frame'].columns}")
+    signal = all_frames[frame_id]['frame'][col_name]
     N = len(signal)
     T = 1.0 / freq
     xf = np.linspace(0.0, 1.0 / (2.0 * T), N // 10)
     yf = signal
+
+    plt.figure(f"FFT values {col_name}")
     plt.plot(xf, (2.0 / N / 10.0) * np.abs(yf[0:N // 10]))
+    plt.tight_layout()
     plt.grid()
+    if show:
+        plt.show()
+
+
+def plot_each_feat(frame):
+    for col in col_to_fft:
+        plot_fft(col, frame, show=False)
     plt.show()
 
 
@@ -376,42 +389,83 @@ def print_values(frame_id):
     print(np.abs(all_frames[frame_id]['frame']['fft_acc_sum_smoth'][:10]))
 
 
-def features_to_pandas():
+def features_to_pandas(n=5):
+    """Break the first n fft components into a pandas table for classification"""
 
-    columns = ['label', ] + [f['frame'][col][:5] for col in col_to_fft] # todo
+    # take the first n and last n elements
+    i_range = [i for i in range(n)] + [i for i in range(-n, 0)]
+
+    columns = ['label', ] + [f"fft_{col}_i={i}" for col in col_to_fft for i in i_range]  # todo
     data = []
     for f in tqdm(all_frames, total=len(all_frames)):
 
-        sample = [f['label'], ] + [f['frame'][col][:5] for col in col_to_fft] # todo into different columns
+        if f['label'] not in (LABELS["walk_rested"], LABELS["walk_very_tired"]):
+            # skip rest and normal walking at the moment
+            # todo multi class and detect rest state
+            continue
+
+        if n >= len(f['frame'])/2:
+            print("There's not enough values to unpack. Choose a smaller n")
+            return
+
+        sample = [f['label'], ] + [f['frame'][col].iloc[i] for col in col_to_fft for i in i_range]
 
         data.append(sample)
 
-    features = pd.DataFrame.from_records(data, columns=columns)
-    return features
+    print(len(data))
+    global df
+    df = pd.DataFrame(data, columns=columns)
+
+    # Add train / test label
+    df['is_train'] = np.random.uniform(0, 1, len(df)) <= 0.75
+
+    return df
 
 
 # #######################################################################
-# #######################         sklearn         #######################
+# ####################         Random Forest         ####################
 # #######################################################################
-def classification():
+def rf_classification():
     logging.info("sklearn section")
 
+    features_col = df.columns[1:-1]
+    # print(features_col)
+
+    # Train / test data
+    train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], train_size=0.75)
+
     # todo feed into random forest
-    if False:
-        rf = RandomForestClassifier(n_estimators=100)
-        rf.fit(x, y)
-        rf.predict()
+    # Show the number of observations for the test and training dataframes
+    print("Train_x Shape :: ", train_x.shape)
+    print("Train_y Shape :: ", train_y.shape)
+    print("Test_x Shape :: ", test_x.shape)
+    print("Test_y Shape :: ", test_y.shape)
 
+    #
+    # Create a random forest Classifier. By convention, clf means 'Classifier'
+    RF_clf = RandomForestClassifier()   # n_jobs=2, random_state=0
 
+    # Train the Classifier to take the training features and learn how they relate to the training y (the labels)
+    RF_clf.fit(train_x, train_y)
 
+    # Apply the Classifier we trained to the test data (which, remember, it has never seen before)
+    predictions = RF_clf.predict(test_x)
 
+    # View the predictions
+    for i in range(len(test_y)):
+        print(f"Actual outcome and Predicted outcome :: {test_y.iloc[i]} vs {predictions[i]}")
 
+    # Create actual english names for the plants for each predicted plant class
+    print("Train Accuracy :: ", accuracy_score(train_y, RF_clf.predict(train_x)))
+    print("Test Accuracy  :: ", accuracy_score(test_y, predictions))
 
+    # Create confusion matrix
+    pd.crosstab(test_y, predictions, rownames=['Actual Label'], colnames=['Predicted Label'])
 
-
-
-
-
+    # View a list of the features and their importance scores
+    feat_importance = pd.DataFrame({'feat_x': features_col, 'importance': RF_clf.feature_importances_})
+    feat_importance.sort_values(['importance'], ascending=False, inplace=True)
+    feat_importance.head(10)
 
 
 
