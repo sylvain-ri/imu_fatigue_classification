@@ -17,17 +17,19 @@ from plot_sensors import *
 pd.set_option('display.expand_frame_repr', False)
 files = setup_files()
 files_load_clean_to_feat(files)
+
+# either
+df = stats_to_pandas()
+# or
 fft_frames()
-df = features_to_pandas()
+df = fft_features_to_pandas()
 
-
-#
-rf_classification(test_ratio=0.1, trees=100)
-
+# then classification
+features_col = df.columns[1:-1]
+train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=0.25)
 
 # Trying GradientBoostingClassifier
-features_col = df.columns[1:-1]
-train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=test_ratio)
+rf_classification(trees=100)
 clf = GradientBoostingClassifier(n_estimators=100, learning_rate=0.2,
                                  max_depth=1).fit(train_x, train_y)
 clf.score(test_x, test_y)
