@@ -502,8 +502,10 @@ def rf_classification(trees=10):
 
 
 
-
-
+# #######################################################################################
+# todo: classify with the 3 classes
+# todo: make function of the confusion matrix and for each classifier
+# todo: loop through each classifier with various test ratio and compare classifications
 
 
 
@@ -589,7 +591,7 @@ if __name__ == '__main__':
             regr.fit(train_x, train_y)
             coefs = pd.DataFrame({'feat_names': features_col, 'values': regr.coef_[0]})
             coefs.sort_values(by=['values'], ascending=False, inplace=True)
-            print(coefs.head(20))
+            print(coefs.head(10))
             predictions = regr.predict(test_x)
             cm = metrics.confusion_matrix(test_y, predictions)
             print(cm)
