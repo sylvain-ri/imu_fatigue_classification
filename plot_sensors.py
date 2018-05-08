@@ -35,6 +35,7 @@ LABELS = {"none": -1, "standing": 0,
 # Holders:
 all_frames = []
 frequencies = []
+frequency = 101     # Empirical value. from 100 to 102
 freq = 0
 
 # Setup
@@ -70,7 +71,6 @@ def clean_data(data, tiredness_state):
     # find total time, sampling frequency
     logging.debug(f'starts at {data["date_time"][0]}, ends at {data["date_time"].iloc[-1]}')
     total_time = (data["date_time"].iloc[-1] - data["date_time"][0])
-    frequency = int(round(len(data) / total_time.seconds, 0))
     logging.debug(len(data))
     logging.debug(frequency)
 
@@ -303,7 +303,7 @@ def files_load_clean_to_feat(files):
     freq = sum(frequencies) / len(frequencies)
 
 
-def plot_stuff():
+def plot_stuff(selected_col="acc_derivative_z", show=True):
     # whyyyyyy is plt. blocking...
 
     print("\n")
@@ -311,33 +311,30 @@ def plot_stuff():
     print("len(all_frames)", len(all_frames))
     # pprint(all_frames)
 
+    # Plot settings
+    plt.figure(f"FFT comparison {selected_col}")
 
-    # Compute fft on all subsets
-    col_to_plot = ["acc_derivative_z",]
+    # Add data to the plot
+    plt.plot()
 
-    plt.figure(f"FFT comparison {col_to_plot}")
     plt.xlabel('Frequency in Hertz [Hz]')
     plt.ylabel('Frequency Domain Magnitude (Spectrum)')
-    plt.xlim([-0.2, 10])
+    # plt.xlim([-0.2, 10])
     red_patch = mpatches.Patch(color='red', label='walk_very_tired')
     green_patch = mpatches.Patch(color='green', label='walk_rested')
     blue_patch = mpatches.Patch(color='blue', label='standing')
     plt.legend(handles=[red_patch, green_patch, blue_patch])
-
-    plt.show()
-    plt.close("all")
+    plt.tight_layout()
+    if show:
+        plt.show()
+        plt.close("all")
 
 
 def fft_frames():
     print("Compute the fft for some columns")
 
     for index, dat in tqdm(enumerate(all_frames), total=len(all_frames)):
-
         if dat["label"] != LABELS["none"]:      # and dat["label"] != LABELS["walk_tired"]
-
-            # Find the state
-            state = list(LABELS.keys())[list(LABELS.values()).index(dat['label'])]
-
             for column in col_to_fft:
 
                 signal = dat["frame"][column]
@@ -345,21 +342,12 @@ def fft_frames():
 
                 X = fftpack.fft(signal * w)
                 # todo try without the window
-
                 dat["frame"][f"fft_{column}"] = X
-
-                if DEBUG > 2:
-                    if state == "standing":             colour = 'b'
-                    elif state == "walk_rested":        colour = 'g'
-                    elif state == "walk_very_tired":    colour = 'r'
-                    else:                               colour = 'y'
-                    freqs = fftpack.fftfreq(len(signal)) * freq
-                    plt.plot(freqs, abs(X), colour)
 
     print("Done")
 
 
-def plot_fft(col_name, frame_id, show=True):
+def plot_1_frame_fft(col_name, frame_id, show=True):
     if all_frames[frame_id]['label'] < 0:
         print("Frame to drop, not classified")
         return
@@ -382,8 +370,46 @@ def plot_fft(col_name, frame_id, show=True):
 
 def plot_each_feat(frame):
     for col in col_to_fft:
-        plot_fft(col, frame, show=False)
+        plot_1_frame_fft(col, frame, show=False)
     plt.show()
+
+
+def plot_compare_states():
+    """ Plot data from all chops, to compare each of them between states """
+    count_label_1 = 0
+    count_label_3 = 0
+    for dat in tqdm(all_frames):
+        for col_name in col_to_plot[1]:
+            label = dat['label']
+            if label not in (1, 3):
+                continue
+            if label == 1:
+                count_label_1 += 1
+                colour = '.b'
+            elif label == 3:
+                count_label_3 += 1
+                colour = '.r'
+            else:
+                colour = '.g'
+            plt.figure(f"Feature: {col_name}")
+            plt.plot(dat['frame'][col_name].values, colour, markersize=2)
+            plt.tight_layout()
+            plt.grid()
+    print(f"label One: {count_label_1}, and label Three: {count_label_3}")
+    plt.show()
+
+
+def plot_various():
+    # Unused yet
+    state = list(LABELS.keys())[list(LABELS.values()).index(dat['label'])]
+    signal = dat["frame"][column]
+    if DEBUG > 2:
+        if state == "standing":             colour = 'b'
+        elif state == "walk_rested":        colour = 'g'
+        elif state == "walk_very_tired":    colour = 'r'
+        else:                               colour = 'y'
+        freqs = fftpack.fftfreq(len(signal)) * freq
+        plt.plot(freqs, abs(X), colour)
 
 
 def print_values(frame_id):
@@ -391,7 +417,42 @@ def print_values(frame_id):
     print(np.abs(all_frames[frame_id]['frame']['fft_acc_sum_smoth'][:10]))
 
 
-def features_to_pandas(n=5):
+def stats_to_pandas():
+
+    features = ["mean", "med", "p10", "p90", "1to9", "p25", "p75", "2t7", "std", "vari", ]
+    columns = ['label', ] + [f"{col}_{f}" for col in col_to_fft for f in features]  # todo
+    data = []
+
+    for f in tqdm(all_frames, total=len(all_frames)):
+
+        if f['label'] not in (LABELS["walk_rested"], LABELS["walk_very_tired"]):
+            # skip rest and normal walking at the moment
+            continue
+
+        # to adapt to stats
+        sample = [f['label'], ]
+        for col in col_to_fft:
+            values = np.array(f['frame'][col].values)
+            sample.append(np.mean(values))
+            sample.append(np.median(values))
+            sample.append(np.percentile(values, 10))
+            sample.append(np.percentile(values, 90))
+            sample.append(np.percentile(values, 90) - np.percentile(values, 10))
+            sample.append(np.percentile(values, 25))
+            sample.append(np.percentile(values, 75))
+            sample.append(np.percentile(values, 75) - np.percentile(values, 25))
+            sample.append(np.std(values))
+            sample.append(np.var(values))
+        data.append(sample)
+
+    global df
+    df = pd.DataFrame(data, columns=columns)
+    # Add train / test label
+    df['is_train'] = np.random.uniform(0, 1, len(df)) <= 0.75
+    return df
+
+
+def fft_features_to_pandas(n=5):
     """Break the first n fft components into a pandas table for classification"""
 
     # take the first n and last n elements
@@ -430,14 +491,6 @@ def features_to_pandas(n=5):
 def rf_classification(trees=10):
     logging.info("sklearn section")
 
-    # Show the number of observations for the test and training dataframes
-    if DEBUG > 1:
-        print("Train_x Shape :: ", train_x.shape)
-        print("Train_y Shape :: ", train_y.shape)
-        print("Test_x Shape :: ", test_x.shape)
-        print("Test_y Shape :: ", test_y.shape)
-
-    #
     # Create a random forest Classifier. By convention, clf means 'Classifier'
     RF_clf = RandomForestClassifier(n_estimators=trees, max_features=int(sqrt(len(features_col))), n_jobs=-1)
 
@@ -495,11 +548,12 @@ if __name__ == '__main__':
     user_ratio = args.ratio
     user_trees = args.trees
 
-    forest = False
-    gradient = False
-    linear_reg = True
-    logistic_reg = True
+    forest, gradient, linear_reg, logistic_reg = False, False, False, True
 
+    #
+    # ###################################################################################################
+    # #########################            Starting main script              ############################
+    # ###################################################################################################
     # Parse the text file to formula
     print("Hello, lets start ! Let's try to differentiate tired and none tired state")
 
@@ -508,9 +562,13 @@ if __name__ == '__main__':
     pd.set_option('display.expand_frame_repr', False)
     files = setup_files()
     files_load_clean_to_feat(files)
-    fft_frames()
 
-    df = features_to_pandas()
+    do_stats = True
+    if do_stats:
+        stats_to_pandas()
+    else:
+        fft_frames()
+        fft_features_to_pandas()
 
     # Features
     features_col = df.columns[1:-1]
@@ -518,6 +576,14 @@ if __name__ == '__main__':
     # Train / test data
     train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=user_ratio)
 
+    # Show the number of observations for the test and training dataframes
+    if DEBUG > 1:
+        print("Train_x Shape :: ", train_x.shape)
+        print("Train_y Shape :: ", train_y.shape)
+        print("Test_x Shape :: ", test_x.shape)
+        print("Test_y Shape :: ", test_y.shape)
+
+    #
     # ###################################################################################################
     # Main loop to try various algo and various setup
     while user_trees != 0:
@@ -540,11 +606,14 @@ if __name__ == '__main__':
         elif logistic_reg:
             regr = LogisticRegression(max_iter=user_trees)
             regr.fit(train_x, train_y)
+            coefs = pd.DataFrame({'feat_names': features_col, 'values': regr.coef_[0]})
+            coefs.sort_values(by=['values'], ascending=False, inplace=True)
+            print(coefs.head(20))
             predictions = regr.predict(test_x)
             cm = metrics.confusion_matrix(test_y, predictions)
             print(cm)
-            print(regr.score(test_x, test_y))
-            print(sorted(regr.coef_)[:10])
+            # print(regr.score(test_x, test_y))
+            # print(sorted(regr.coef_)[:10])
 
         # Inputs
         print("********************************************************************")
