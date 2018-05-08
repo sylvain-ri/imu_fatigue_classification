@@ -20,7 +20,7 @@ files_load_clean_to_feat(files)
 fft_frames()
 
 df = features_to_pandas()
-rf_classification()
+rf_classification(test_ratio=0.1, trees=100)
 
 
 plot_each_feat(2)
