@@ -14,12 +14,16 @@ import os
 os.chdir("D:/Drive/Singapore/Courses/CS6206-HCI Human Computer Interaction/Project/Python")
 from plot_sensors import *
 
+pd.set_option('display.expand_frame_repr', False)
 files = setup_files()
 files_load_clean_to_feat(files)
 fft_frames()
 
-# one_frame = all_frames[5]['frame']
+df = features_to_pandas()
+rf_classification()
 
+
+plot_each_feat(2)
 plot_fft(8)
 
 
