@@ -7,17 +7,18 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from sklearn.metrics import confusion_matrix
-from sklearn.preprocessing import label
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn import metrics
+
 from matplotlib import pyplot as plt
 from matplotlib import patches as mpatches
 from scipy import fftpack
 from scipy.signal import blackman
 from pprint import pprint
-
+from math import sqrt
 
 
 # #######################################################################
@@ -426,13 +427,8 @@ def features_to_pandas(n=5):
 # #######################################################################
 # ####################         Random Forest         ####################
 # #######################################################################
-def rf_classification(test_ratio=0.25, trees=10):
+def rf_classification(trees=10):
     logging.info("sklearn section")
-
-    features_col = df.columns[1:-1]
-
-    # Train / test data
-    train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=test_ratio)
 
     # Show the number of observations for the test and training dataframes
     if DEBUG > 1:
@@ -443,7 +439,7 @@ def rf_classification(test_ratio=0.25, trees=10):
 
     #
     # Create a random forest Classifier. By convention, clf means 'Classifier'
-    RF_clf = RandomForestClassifier(n_estimators=trees, n_jobs=4)   # n_jobs=2, random_state=0
+    RF_clf = RandomForestClassifier(n_estimators=trees, max_features=int(sqrt(len(features_col))), n_jobs=-1)
 
     # Train the Classifier to take the training features and learn how they relate to the training y (the labels)
     RF_clf.fit(train_x, train_y)
@@ -468,7 +464,7 @@ def rf_classification(test_ratio=0.25, trees=10):
     if DEBUG > 0:
         feat_importance = pd.DataFrame({'feat_x': features_col, 'importance': RF_clf.feature_importances_})
         feat_importance.sort_values(['importance'], ascending=False, inplace=True)
-        feat_importance.head(10)
+        print(feat_importance.head(8))
 
 
 
@@ -496,6 +492,13 @@ if __name__ == '__main__':
     cmd.add_argument("-v", "--verbosity", help="Verbosity level, 0 (no comments), to 10 (lots of details)",
                      type=int, default=0, choices=[i for i in range(-1, 10)])
     args = cmd.parse_args()
+    user_ratio = args.ratio
+    user_trees = args.trees
+
+    forest = False
+    gradient = False
+    linear_reg = True
+    logistic_reg = True
 
     # Parse the text file to formula
     print("Hello, lets start ! Let's try to differentiate tired and none tired state")
@@ -508,20 +511,64 @@ if __name__ == '__main__':
     fft_frames()
 
     df = features_to_pandas()
-    # rf_classification(test_ratio=args.ratio, trees=args.trees)
 
-    user_ratio = args.ratio
-    user_trees = args.trees
+    # Features
+    features_col = df.columns[1:-1]
 
+    # Train / test data
+    train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=user_ratio)
+
+    # ###################################################################################################
+    # Main loop to try various algo and various setup
     while user_trees != 0:
-        rf_classification(test_ratio=user_ratio, trees=user_trees)
+
+        # Launching an algorithm
+        if forest:
+            rf_classification(trees=user_trees)
+
+        elif gradient:
+            clf = GradientBoostingClassifier(n_estimators=100, learning_rate=0.2,
+                                             max_depth=1).fit(train_x, train_y)
+            print(clf.score(test_x, test_y))
+
+        elif linear_reg:
+            regr = LinearRegression()
+            regr.fit(train_x, train_y)
+            print(regr.score(test_x, test_y))
+            print(sorted(regr.coef_)[:10])
+
+        elif logistic_reg:
+            regr = LogisticRegression(max_iter=user_trees)
+            regr.fit(train_x, train_y)
+            predictions = regr.predict(test_x)
+            cm = metrics.confusion_matrix(test_y, predictions)
+            print(cm)
+            print(regr.score(test_x, test_y))
+            print(sorted(regr.coef_)[:10])
+
+        # Inputs
+        print("********************************************************************")
+        print("New trial")
 
         n_user_ratio = input("Set a new ratio: ")
-        if n_user_ratio != "" and float(n_user_ratio) > 0:
+        if n_user_ratio != "" and 1 > float(n_user_ratio) >= 0:
             user_ratio = float(n_user_ratio)
-        n_user_trees = int(input("Set a new number of trees or '0' to exit: "))
+            print(f"Ratio of test data updated to {user_ratio}")
+            train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=user_ratio)
+
+        n_user_trees = input("Set a new number of trees or '0' to exit: ")
         if n_user_trees != "":
-            user_trees = int(n_user_trees)
+            if n_user_trees == "t":
+                forest, gradient, linear_reg, logistic_reg = True, False, False, False
+            elif n_user_trees == "g":
+                forest, gradient, linear_reg, logistic_reg = False, True, False, False
+            elif n_user_trees == "r":
+                forest, gradient, linear_reg, logistic_reg = False, False, True, False
+            elif n_user_trees == "l":
+                forest, gradient, linear_reg, logistic_reg = False, False, False, True
+            else:
+                user_trees = int(n_user_trees)
+                print(f"User trees updated to {user_trees}")
 
 
 
