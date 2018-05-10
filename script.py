@@ -12,7 +12,7 @@ if False:
 # How to call the main script from the console
 import os
 os.chdir("D:/Drive/Singapore/Courses/CS6206-HCI Human Computer Interaction/Project/Python")
-from plot_sensors import *
+from imu_state_classification import *
 
 pd.set_option('display.expand_frame_repr', False)
 files = setup_files()
