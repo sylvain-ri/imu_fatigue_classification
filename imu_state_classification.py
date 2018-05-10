@@ -596,10 +596,10 @@ if __name__ == '__main__':
     # Train / test data
     train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=user_test_ratio)
 
-    classifier = {"forest": False,
-                "gradient": False,
-                "linear_reg": False,
-                "logistic_reg": True}
+    classifiers = {"forest": False,
+                   "gradient": False,
+                   "linear_reg": False,
+                   "logistic_reg": True}
 
     # Show the number of observations for the test and training dataframes
     if DEBUG > 1:
@@ -613,15 +613,15 @@ if __name__ == '__main__':
     # Main loop to try various algo and various setup
     while user_trees != 0:
 
-        print(f"Launching classification with\t: {[clas for clas in classifier if classifier[clas] is True][0]}")
+        print(f"Launching classification with\t: *{[c for c in classifiers if classifiers[c] is True][0]}*")
 
         # Launching an algorithm
-        if classifier["forest"]:
+        if classifiers["forest"]:
             predictions, coefs, score = rf_classification(trees=user_trees)
             print(f"Test score = {round(score*100, 1)}%")
             print_cross_predictions(test_y, predictions)
 
-        elif classifier["gradient"]:
+        elif classifiers["gradient"]:
             clf = GradientBoostingClassifier(n_estimators=100, learning_rate=0.2,
                                              max_depth=1).fit(train_x, train_y)
             predictions = clf.predict(test_x)
@@ -629,7 +629,7 @@ if __name__ == '__main__':
             print(f"Test score = {round(score*100, 1)}%")
             print_cross_predictions(test_y, predictions)
 
-        elif classifier["linear_reg"]:
+        elif classifiers["linear_reg"]:
             regr = LinearRegression()
             regr.fit(train_x, train_y)
             score = regr.score(test_x, test_y)
@@ -637,7 +637,7 @@ if __name__ == '__main__':
             print(f"Test score = {round(score*100, 1)}%")
             print_cross_predictions(test_y, predictions)
 
-        elif classifier["logistic_reg"]:
+        elif classifiers["logistic_reg"]:
             predictions, coefs, score = logistic_cls()
             print(f"Test score = {round(score*100, 1)}%")
             print_cross_predictions(test_y, predictions)
@@ -646,26 +646,28 @@ if __name__ == '__main__':
         print("\n********************************************************************")
         print("New trial")
 
-        n_user_ratio = input("Set a new ratio: ")
+        n_user_ratio = input("Set a new ratio (enter no value to pass): ")
         if n_user_ratio != "" and 1 > float(n_user_ratio) >= 0:
             user_test_ratio = float(n_user_ratio)
             print(f"Ratio of test data updated to {user_test_ratio}")
+
+        # re split the data anyway to see if the results change depending on the data splitting
         train_x, test_x, train_y, test_y = train_test_split(df[features_col], df['label'], test_size=user_test_ratio)
 
-        n_user_trees = input("Set a new number of trees or '0' to exit: ")
+        n_user_trees = input("Set a new number of trees or '0' to exit or 'f/g/r/l' to choose the classifiers: ")
         if n_user_trees != "":
             if n_user_trees == "f":
-                classifier = dict.fromkeys(classifier, False)
-                classifier["forest"] = True
+                classifiers = dict.fromkeys(classifiers, False)
+                classifiers["forest"] = True
             elif n_user_trees == "g":
-                classifier = dict.fromkeys(classifier, False)
-                classifier["gradient"] = True
+                classifiers = dict.fromkeys(classifiers, False)
+                classifiers["gradient"] = True
             elif n_user_trees == "r":
-                classifier = dict.fromkeys(classifier, False)
-                classifier["linear_reg"] = True
+                classifiers = dict.fromkeys(classifiers, False)
+                classifiers["linear_reg"] = True
             elif n_user_trees == "l":
-                classifier = dict.fromkeys(classifier, False)
-                classifier["logistic_reg"] = True
+                classifiers = dict.fromkeys(classifiers, False)
+                classifiers["logistic_reg"] = True
             else:
                 user_trees = int(n_user_trees)
                 print(f"User trees/iterations updated to {user_trees}")
