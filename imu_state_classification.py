@@ -24,6 +24,7 @@ from math import sqrt
 # #######################################################################
 # #######################       Parameters        #######################
 # #######################################################################
+FOLDER = "../Data"
 DEBUG = 1
 SKIP_BEG_SEC = 1        # remove what happens when the recording on the smartphone is started and put into pocket
 SKIP_END_SEC = 1        # same, for the end, when removed from pocket
@@ -233,13 +234,12 @@ def clean_data(data, tiredness_state, chop_period=4):
 # #######################################################################
 # #######################          SETUP          #######################
 # #######################################################################
-def setup_files():
+def setup_files(folder):
     # Logging Settings
     logging.basicConfig()
     logging.info("Setup section")
 
     # Folder and Files
-    folder = "D:/Drive/Singapore/Courses/CS6206-HCI Human Computer Interaction/Project/Data"
     os.chdir(folder)
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     logging.info(f"found {len(files)} files in folder {folder}")
@@ -542,7 +542,7 @@ if __name__ == '__main__':
         "  Submission for 2018/05/12 \n"
         "\n")
     cmd.add_argument("-r", "--ratio", help="Ratio for the test data set",
-                     type=float, default=0.4)
+                     type=float, default=0.5)
     cmd.add_argument("-t", "--trees", help="Number of trees in the Random Forest classifier",
                      type=int, default=50)
     cmd.add_argument("-v", "--verbosity", help="Verbosity level, 0 (no comments), to 10 (lots of details)",
@@ -552,7 +552,7 @@ if __name__ == '__main__':
     cmd.add_argument("-b", "--class_b", help="Class B (from 1 to 3)",
                      type=int, default=3, choices=[i for i in range(1, 4)])
     cmd.add_argument("-c", "--chop", help="Number of seconds for each chop",
-                     type=float, default=1)
+                     type=float, default=4)
     args = cmd.parse_args()
 
     # Arguments to variables
@@ -562,23 +562,26 @@ if __name__ == '__main__':
     class_a = args.class_a
     class_b = args.class_b
     # Confirm parameters
-    print(f"We will classify between class {class_a} and {class_b}. \n"
+    print(f"\n********************************************************************\n"
+          f"We will classify between class {class_a} and {class_b}. \n"
           f"for reference: {LABELS} \n"
           f"The original data records, split depending on these states, "
           f"are further split into periods of {chop_seconds} seconds \n"
-          f"We will start with a test ratio of {user_test_ratio} and {user_trees} trees/iterations. n")
+          f"We will start with a test ratio of {user_test_ratio} and {user_trees} "
+          f"trees/iterations for the classification. \n"
+          f"********************************************************************\n")
 
     #
     # ###################################################################################################
     # #########################            Starting main script              ############################
     # ###################################################################################################
     # Parse the text file to formula
-    print("Hello, lets start ! Let's try to differentiate tired and none tired state")
+    print(f"Load, clean, filter, chop files into fractions of {chop_seconds} seconds, and compute statistics.")
 
     DEBUG = args.verbosity
 
     pd.set_option('display.expand_frame_repr', False)
-    files = setup_files()
+    files = setup_files(FOLDER)
 
     # the second number is the length in seconds, to chop the files
     files_load_clean_to_feat(files, chop_seconds)
@@ -589,6 +592,10 @@ if __name__ == '__main__':
     else:
         fft_frames()
         fft_features_to_pandas()
+
+    print(f"\n********************************************************************\n"
+          f"Now comes the classification"
+          f"\n********************************************************************")
 
     # Features
     features_col = df.columns[1:-1]
@@ -647,7 +654,7 @@ if __name__ == '__main__':
         print("New trial")
 
         n_user_ratio = input("Set a new ratio (enter no value to pass): ")
-        if n_user_ratio != "" and 1 > float(n_user_ratio) >= 0:
+        if n_user_ratio != "" and 1 > float(n_user_ratio) > 0:
             user_test_ratio = float(n_user_ratio)
             print(f"Ratio of test data updated to {user_test_ratio}")
 
