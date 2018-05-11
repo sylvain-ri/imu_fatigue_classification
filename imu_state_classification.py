@@ -641,6 +641,7 @@ if __name__ == '__main__':
             regr.fit(train_x, train_y)
             score = regr.score(test_x, test_y)
             predictions = regr.predict(test_x)
+            coefs = regr.coef_[0]
             print(f"Test score = {round(score*100, 1)}%")
             print_cross_predictions(test_y, predictions)
 
@@ -648,6 +649,8 @@ if __name__ == '__main__':
             predictions, coefs, score = logistic_cls()
             print(f"Test score = {round(score*100, 1)}%")
             print_cross_predictions(test_y, predictions)
+
+        if DEBUG >= 1:  features_coefs(features_col, coefs)
 
         # Inputs
         print("\n********************************************************************")
