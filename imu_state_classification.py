@@ -24,7 +24,7 @@ from math import sqrt
 # #######################################################################
 # #######################       Parameters        #######################
 # #######################################################################
-FOLDER = "../Data"
+FOLDER = "Data"
 DEBUG = 1
 SKIP_BEG_SEC = 1        # remove what happens when the recording on the smartphone is started and put into pocket
 SKIP_END_SEC = 1        # same, for the end, when removed from pocket
@@ -241,7 +241,7 @@ def setup_files(folder):
 
     # Folder and Files
     os.chdir(folder)
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    files = [f for f in os.listdir(".") if f.endswith(".csv")]
     logging.info(f"found {len(files)} files in folder {folder}")
 
     return files
